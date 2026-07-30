@@ -43,7 +43,7 @@ pub fn evict_octree_nodes<T: NodeData>(
                 .visible_octree_nodes
                 .contains_key(key)
         }) {
-            let Some(octree) = octrees.get_mut(key.octree_id) else {
+            let Some(mut octree) = octrees.get_mut(key.octree_id) else {
                 continue;
             };
 

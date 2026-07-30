@@ -2,15 +2,13 @@ pub mod node;
 
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::Core3d;
+use bevy_core_pipeline::Core3d;
 use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
-use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_pbr::{SetMeshViewBindGroup, ViewKeyCache};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::GpuPreprocessingSupport,
-    prelude::*,
-    render_graph::{RenderGraphExt, ViewNodeRunner},
     render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
     render_resource::{PipelineCache, SpecializedRenderPipelines},
     sync_world::MainEntity,
@@ -18,10 +16,8 @@ use bevy_render::{
     Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
 
-use super::{
-    attribute_pass::node::AttributePassOctreeLabel, depth_pass::node::DepthPassOctreeLabel,
-    phase::PointCloudOctree3dBinKey,
-};
+use super::phase::PointCloudOctree3dBinKey;
+use crate::pointcloud_octree::render::attribute_pass::node::pcl_octree_attribute_pass;
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
 #[cfg(not(feature = "webgl"))]
@@ -40,12 +36,13 @@ use crate::{
     },
     render::{
         attribute_pass::{
+            node::pcl_attribute_pass,
             pipeline::{AttributePassPipeline, AttributePipelineKey},
             texture::prepare_attribute_pass_bind_groups,
         },
         material::SetPointCloudMaterialGroup,
-        normalize_pass::node::NormalizePassLabel,
         phase::PointCloud3dBatchSetKey,
+        PointCloudPass,
     },
 };
 
@@ -67,15 +64,15 @@ impl Plugin for AttributePassPlugin {
                     prepare_attribute_pass_bind_groups.in_set(RenderSystems::PrepareResources),
                     queue_attribute_pass.in_set(RenderSystems::QueueMeshes),
                 ),
-            );
-
-        render_app
-            .add_render_graph_node::<ViewNodeRunner<node::AttributePassOctreeNode::<PointCloudOctree3dNodePhase>>>(
-                Core3d,
-                AttributePassOctreeLabel,
             )
-            .add_render_graph_edges(Core3d, (DepthPassOctreeLabel, AttributePassOctreeLabel))
-            .add_render_graph_edges(Core3d, (AttributePassOctreeLabel, NormalizePassLabel));
+            .add_systems(
+                Core3d,
+                pcl_octree_attribute_pass::<PointCloudOctree3dNodePhase>
+                    .in_set(PointCloudPass::Attribute)
+                    // See the depth pass: shared attachment, Clear goes to
+                    // whichever runs first. Vacuous without the simple renderer.
+                    .after(pcl_attribute_pass),
+            );
     }
 }
 
@@ -143,24 +140,26 @@ fn queue_attribute_pass(
     mut custom_render_phases: ResMut<
         ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>,
     >,
+    view_key_cache: Res<ViewKeyCache>,
     mut views: Query<(
         &ExtractedView,
         &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
-        &Msaa,
     )>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
-    for (view, visible_entities, msaa) in &mut views {
+    for (view, visible_entities) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
         let draw_custom = custom_draw_functions.read().id::<DrawAttributePass>();
 
-        // Create the key based on the view.
-        // In this case we only care about MSAA and HDR
-        let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_hdr(view.hdr);
+        // See the simple path's `queue_depth_pass`: read the view key, never
+        // rebuild it — the mesh-view bind group layout is derived from all 16
+        // of its bits, and a missing one is a silent wgpu validation failure.
+        let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
+            continue;
+        };
 
         let attribute_key = AttributePipelineKey {
             mesh_key: view_key,

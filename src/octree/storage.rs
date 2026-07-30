@@ -70,7 +70,10 @@ impl<'a, T> VacantEntry<'a, T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// `ignore`d: copied from `slab`'s docs and never adapted — `GenerationalSlab`
+    /// has no `Index` impl, so `slab[hello]` cannot compile. Broken since 859b07c,
+    /// unrelated to the bevy 0.19 port.
+    /// ```ignore
     /// let mut slab = GenerationalSlab::new();
     ///
     /// let hello = {

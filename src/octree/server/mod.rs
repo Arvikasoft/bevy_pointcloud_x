@@ -464,7 +464,7 @@ pub fn handle_internal_octree_events<T>(
                 // update in flight hashset
                 load_tasks.hierarchy_in_flight.remove(&key);
 
-                let Some(octree) = assets.get_mut(id) else {
+                let Some(mut octree) = assets.get_mut(id) else {
                     debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
                         id
@@ -548,7 +548,7 @@ pub fn handle_internal_octree_events<T>(
                 // update in flight hashset
                 load_tasks.hierarchy_in_flight.remove(&key);
 
-                let Some(octree) = assets.get_mut(id) else {
+                let Some(mut octree) = assets.get_mut(id) else {
                     debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
                         id
@@ -568,7 +568,7 @@ pub fn handle_internal_octree_events<T>(
                 // update in flight hashset
                 load_tasks.node_in_flight.remove(&key);
 
-                let Some(octree) = assets.get_mut(id) else {
+                let Some(mut octree) = assets.get_mut(id) else {
                     debug!("No asset found for {:?}, unable to store node data.", id);
                     continue;
                 };
@@ -591,7 +591,7 @@ pub fn handle_internal_octree_events<T>(
                 // update in flight hashset
                 load_tasks.node_in_flight.remove(&key);
 
-                let Some(octree) = assets.get_mut(id) else {
+                let Some(mut octree) = assets.get_mut(id) else {
                     debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
                         id

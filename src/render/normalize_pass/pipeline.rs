@@ -1,11 +1,9 @@
 use bevy_core_pipeline::FullscreenShader;
 use bevy_ecs::prelude::*;
-use bevy_image::BevyDefault;
 use bevy_render::render_resource::{
     binding_types::{texture_2d, texture_2d_multisampled},
     *,
 };
-use bevy_render::view::ViewTarget;
 use bevy_shader::ShaderDefVal;
 
 use crate::render::{
@@ -17,12 +15,20 @@ pub struct NormalizePassPipelineKey {
     pub samples: u32,
     pub use_edl: bool,
     pub edl_neighbour_count: u32,
-    /// TurboTwin vendor patch: specialize the color target on the view's
-    /// HDR-ness. The normalize pass writes to the camera's view target, which
-    /// is Rgba16Float for HDR views (e.g. cameras with `Atmosphere`); the
-    /// upstream hardcoded `bevy_default()` (Rgba8UnormSrgb) fails wgpu
-    /// validation on such views.
-    pub hdr: bool,
+    /// TurboTwin vendor patch, re-derived for bevy 0.19: specialize the color
+    /// target on the view target's actual format. The normalize pass writes to
+    /// the camera's view target, which is `Rgba16Float` for HDR views (e.g.
+    /// cameras with `Atmosphere`) and the surface format otherwise; the upstream
+    /// hardcoded `bevy_default()` (`Rgba8UnormSrgb`) fails wgpu validation on
+    /// both HDR views and Bgra8 surfaces.
+    ///
+    /// 0.18 keyed this on a `hdr: bool` and picked `ViewTarget::TEXTURE_FORMAT_HDR`
+    /// vs `bevy_default()`. 0.19 exposes [`ExtractedView::target_format`], which
+    /// is the format itself — strictly better, and `BevyDefault` is now
+    /// deprecated for exactly this reason.
+    ///
+    /// [`ExtractedView::target_format`]: bevy_render::view::ExtractedView::target_format
+    pub target_format: TextureFormat,
 }
 
 #[derive(Component)]
@@ -114,11 +120,7 @@ impl SpecializedRenderPipeline for NormalizePassPipeline {
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     // TurboTwin vendor patch: match the view target format.
-                    format: if key.hdr {
-                        ViewTarget::TEXTURE_FORMAT_HDR
-                    } else {
-                        TextureFormat::bevy_default()
-                    },
+                    format: key.target_format,
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
@@ -127,8 +129,8 @@ impl SpecializedRenderPipeline for NormalizePassPipeline {
             depth_stencil: Some(DepthStencilState {
                 format: TextureFormat::Depth32Float,
                 // Do not write the depth, because it has already been written in the depth pass, and we don't have access to it
-                depth_write_enabled: false,
-                depth_compare: CompareFunction::Always,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(CompareFunction::Always),
                 stencil: Default::default(),
                 bias: Default::default(),
             }),
@@ -137,8 +139,38 @@ impl SpecializedRenderPipeline for NormalizePassPipeline {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Guards the vendor patch: the normalize pass must get a *separate*
+    /// pipeline per view-target format, or wgpu rejects the pass on HDR views.
+    /// If someone drops `target_format` from the key (or stops hashing it),
+    /// `SpecializedRenderPipelines` hands out one pipeline for every view again.
+    #[test]
+    fn key_distinguishes_view_target_formats() {
+        let base = NormalizePassPipelineKey {
+            samples: 1,
+            use_edl: true,
+            edl_neighbour_count: 4,
+            target_format: TextureFormat::Rgba8UnormSrgb,
+        };
+        let hdr = NormalizePassPipelineKey {
+            target_format: TextureFormat::Rgba16Float,
+            ..base.clone()
+        };
+        assert!(base != hdr);
+
+        // `SpecializedRenderPipelines` keys a HashMap on this, so the format has
+        // to reach the hash too.
+        use core::hash::BuildHasher;
+        let state = std::collections::hash_map::RandomState::new();
+        assert_ne!(state.hash_one(&base), state.hash_one(&hdr));
     }
 }

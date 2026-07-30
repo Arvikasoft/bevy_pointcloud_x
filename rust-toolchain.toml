@@ -1,0 +1,9 @@
+[toolchain]
+# bevy 0.19 declares rust-version = 1.95.0 (bevy_ecs); anything older fails to
+# resolve. Mirrors bevy_3d_tiles / TurboTwin's pin.
+channel = "1.95.0"
+targets = ["wasm32-unknown-unknown"]
+# CI installs components for its default toolchain, but this file overrides the
+# channel at cargo time — declare them here so rustup provisions the pinned
+# toolchain completely (the fmt/clippy jobs are gated).
+components = ["rustfmt", "clippy"]

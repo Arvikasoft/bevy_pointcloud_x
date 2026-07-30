@@ -282,7 +282,7 @@ pub fn prepare_visible_nodes_texture(
                 visible_nodes_texture,
                 None,
                 None,
-                Some(LinearRgba::NONE),
+                Some(LinearRgba::NONE.into()),
             )),
             // octree_mapping,
             // octree_index,

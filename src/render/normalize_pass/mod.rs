@@ -4,26 +4,24 @@ mod pipeline;
 mod texture;
 
 use bevy_app::prelude::*;
-use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy_core_pipeline::Core3d;
 use bevy_ecs::prelude::*;
 use bevy_render::{
-    render_graph::{RenderGraphExt, ViewNodeRunner},
     render_resource::{PipelineCache, SpecializedRenderPipelines},
     view::{ExtractedView, Msaa},
     Render, RenderApp, RenderSystems,
 };
-use node::{NormalizePassLabel, NormalizePassNode};
+use node::pcl_normalize_pass;
 use pipeline::NormalizePassPipeline;
 
 use crate::render::{
-    attribute_pass::node::AttributePassLabel,
     eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout,
     normalize_pass::{
         eye_dome_lighting::prepare_normalize_pass_edl_bind_groups,
         pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey},
         texture::prepare_normalize_pass_bind_groups,
     },
-    PointCloudRenderMode, PointCloudRenderModeOpt,
+    PointCloudPass, PointCloudRenderMode, PointCloudRenderModeOpt,
 };
 
 pub struct NormalizePassPlugin;
@@ -36,12 +34,6 @@ impl Plugin for NormalizePassPlugin {
 
         render_app
             .init_resource::<SpecializedRenderPipelines<NormalizePassPipeline>>()
-            .add_render_graph_node::<ViewNodeRunner<NormalizePassNode>>(
-                // Specify the label of the graph, in this case we want the graph for 3d
-                Core3d,
-                // It also needs the label of the node
-                NormalizePassLabel,
-            )
             .add_systems(
                 Render,
                 (
@@ -50,15 +42,7 @@ impl Plugin for NormalizePassPlugin {
                     prepare_normalize_pass_edl_bind_groups.in_set(RenderSystems::PrepareBindGroups),
                 ),
             )
-            .add_render_graph_edges(
-                Core3d,
-                // Specify the node ordering.
-                (
-                    AttributePassLabel,
-                    NormalizePassLabel,
-                    Node3d::MainTransparentPass,
-                ),
-            );
+            .add_systems(Core3d, pcl_normalize_pass.in_set(PointCloudPass::Normalize));
     }
 
     fn finish(&self, app: &mut App) {
@@ -89,8 +73,8 @@ fn prepare_normalize_pass_pipelines(
                 samples: msaa.samples(),
                 use_edl: point_cloud_render_mode.use_edl(),
                 edl_neighbour_count: point_cloud_render_mode.edl_neighbour_count(),
-                // TurboTwin vendor patch: see NormalizePassPipelineKey::hdr.
-                hdr: view.hdr,
+                // TurboTwin vendor patch: see NormalizePassPipelineKey::target_format.
+                target_format: view.target_format,
             },
         );
 
