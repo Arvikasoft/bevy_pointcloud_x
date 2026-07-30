@@ -2,22 +2,20 @@ pub mod node;
 
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy_core_pipeline::Core3d;
 use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
-use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_pbr::{SetMeshViewBindGroup, ViewKeyCache};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::GpuPreprocessingSupport,
-    prelude::*,
-    render_graph::{RenderGraphExt, ViewNodeRunner},
     render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
     render_resource::{PipelineCache, SpecializedRenderPipelines},
     sync_world::MainEntity,
     view::{ExtractedView, RetainedViewEntity},
     Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
-use node::DepthPassOctreeLabel;
+use node::pcl_octree_depth_pass;
 
 use super::phase::PointCloudOctree3dBinKey;
 #[cfg(feature = "webgl")]
@@ -38,12 +36,13 @@ use crate::{
     },
     render::{
         depth_pass::{
+            node::pcl_depth_pass,
             pipeline::{DepthPipeline, DepthPipelineKey},
             texture::prepare_depth_pass_textures,
         },
         material::SetPointCloudMaterialGroup,
         phase::PointCloud3dBatchSetKey,
-        PointCloudRenderMode, PointCloudRenderModeOpt,
+        PointCloudPass, PointCloudRenderMode, PointCloudRenderModeOpt,
     },
 };
 
@@ -66,15 +65,19 @@ impl Plugin for DepthPassPlugin {
                     prepare_depth_pass_textures.in_set(RenderSystems::PrepareResources),
                     queue_depth_pass.in_set(RenderSystems::QueueMeshes),
                 ),
-            );
-
-        render_app
-            .add_render_graph_node::<ViewNodeRunner<node::DepthPassOctreeNode::<PointCloudOctree3dNodePhase>>>(
-                Core3d,
-                DepthPassOctreeLabel,
             )
-            // Tell the node to run before the main transparent pass
-            .add_render_graph_edges(Core3d, (DepthPassOctreeLabel, Node3d::MainTransparentPass));
+            .add_systems(
+                Core3d,
+                pcl_octree_depth_pass::<PointCloudOctree3dNodePhase>
+                    .in_set(PointCloudPass::Depth)
+                    // Both depth passes write the same `ViewDepthPrepassTextures`
+                    // attachment, whose Clear-vs-Load is decided by whichever
+                    // calls `get_attachment()` first in wall-clock order while
+                    // command buffers submit in system order. Unordered, the
+                    // clear can land on top of the other pass's output. Vacuous
+                    // when the simple renderer is not installed.
+                    .after(pcl_depth_pass),
+            );
     }
 }
 
@@ -138,25 +141,27 @@ fn queue_depth_pass(
     custom_draw_pipeline: Res<DepthPipeline>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>,
+    view_key_cache: Res<ViewKeyCache>,
     mut views: Query<(
         &ExtractedView,
         &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
-        &Msaa,
         Option<&PointCloudRenderMode>,
     )>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
-    for (view, visible_entities, msaa, point_cloud_render_mode) in &mut views {
+    for (view, visible_entities, point_cloud_render_mode) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
         let draw_custom = custom_draw_functions.read().id::<DrawDepthPass>();
 
-        // Create the key based on the view.
-        // In this case we only care about MSAA and HDR
-        let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_hdr(view.hdr);
+        // See the simple path's `queue_depth_pass`: read the view key, never
+        // rebuild it — the mesh-view bind group layout is derived from all 16
+        // of its bits, and a missing one is a silent wgpu validation failure.
+        let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
+            continue;
+        };
 
         let depth_key = DepthPipelineKey {
             mesh_key: view_key,

@@ -1,7 +1,8 @@
 use bevy_color::LinearRgba;
-use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
+use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
 use bevy_ecs::{prelude::*, query::ROQueryItem, system::SystemParamItem};
 use bevy_log::warn;
+use bevy_pbr::Transmissive3d;
 use bevy_platform::collections::HashMap;
 use bevy_render::{
     camera::ExtractedCamera,
@@ -101,7 +102,7 @@ pub fn prepare_attribute_pass_textures(
                     cached_texture,
                     None,
                     None,
-                    Some(LinearRgba::NONE),
+                    Some(LinearRgba::NONE.into()),
                 )),
                 size,
             });

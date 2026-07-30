@@ -1,7 +1,8 @@
 use bevy_camera::Camera3d;
 use bevy_color::LinearRgba;
-use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
+use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
 use bevy_ecs::prelude::*;
+use bevy_pbr::Transmissive3d;
 use bevy_platform::collections::HashMap;
 use bevy_render::{
     camera::ExtractedCamera,
@@ -114,7 +115,7 @@ pub fn prepare_depth_pass_textures(
                 cached_depth_texture,
                 None,
                 None,
-                Some(LinearRgba::WHITE),
+                Some(LinearRgba::WHITE.into()),
             )),
             size,
         });

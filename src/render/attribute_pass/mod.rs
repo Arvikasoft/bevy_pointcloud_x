@@ -5,25 +5,23 @@ pub mod texture;
 
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::Core3d;
-use bevy_ecs::{change_detection::Tick, prelude::*};
+use bevy_core_pipeline::Core3d;
+use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
-use bevy_pbr::{ExtractedAtmosphere, MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_pbr::{MeshPipelineSystems, SetMeshViewBindGroup, ViewKeyCache};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
-    prelude::*,
-    render_graph::{RenderGraphExt, ViewNodeRunner},
+    init_gpu_resource,
     render_phase::{
         AddRenderCommand, BinnedRenderPhaseType, DrawFunctions, InputUniformIndex, SetItemPipeline,
         ViewBinnedRenderPhases,
     },
     render_resource::{PipelineCache, SpecializedRenderPipelines},
-    sync_world::MainEntity,
     view::{ExtractedView, NoIndirectDrawing, RenderVisibleEntities, RetainedViewEntity},
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
 };
-use node::{AttributePassLabel, AttributePassNode};
+use node::pcl_attribute_pass;
 use phase::PointCloud3dAttributePhase;
 use texture::prepare_attribute_pass_textures;
 
@@ -34,11 +32,11 @@ use crate::{
             pipeline::{AttributePassPipeline, AttributePipelineKey},
             texture::{prepare_attribute_pass_bind_groups, AttributePassLayout},
         },
-        depth_pass::node::DepthPassLabel,
         draw::DrawPointCloud,
         material::SetPointCloudMaterialGroup,
         phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
         point_cloud_uniform::SetPointCloudUniformGroup,
+        PointCloudPass,
     },
 };
 
@@ -61,22 +59,25 @@ impl Plugin for AttributePassPlugin {
                     prepare_attribute_pass_bind_groups.in_set(RenderSystems::PrepareResources),
                     queue_attribute_pass.in_set(RenderSystems::QueueMeshes),
                 ),
-            );
-
-        render_app
-            .add_render_graph_node::<ViewNodeRunner<AttributePassNode>>(Core3d, AttributePassLabel)
-            .add_render_graph_edges(Core3d, (DepthPassLabel, AttributePassLabel));
+            )
+            .add_systems(Core3d, pcl_attribute_pass.in_set(PointCloudPass::Attribute));
     }
 
     fn finish(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-        // The pipeline needs the RenderDevice to be created and it's only available once plugins
-        // are initialized
+        // The layout needs the RenderDevice, which only exists once plugins are
+        // initialized.
         render_app
             .init_resource::<AttributePassLayout>()
-            .init_resource::<AttributePassPipeline>();
+            // See `DepthPassPlugin::finish`: 0.19 builds `MeshPipeline` in
+            // `RenderStartup`, so a `FromWorld` pipeline reading it panics in
+            // `finish`.
+            .add_systems(
+                RenderStartup,
+                init_gpu_resource::<AttributePassPipeline>.after(MeshPipelineSystems),
+            );
     }
 }
 
@@ -136,30 +137,20 @@ fn queue_attribute_pass(
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_clouds_3d: Query<&PointCloud3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
-    mut views: Query<(
-        &ExtractedView,
-        &RenderVisibleEntities,
-        &Msaa,
-        Has<ExtractedAtmosphere>,
-    )>,
-    main_entities: Query<&MainEntity>,
-    mut next_tick: Local<Tick>,
+    view_key_cache: Res<ViewKeyCache>,
+    mut views: Query<(&ExtractedView, &RenderVisibleEntities)>,
 ) {
-    for (view, visible_entities, msaa, has_atmosphere) in &mut views {
+    for (view, visible_entities) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
         let draw_custom = custom_draw_functions.read().id::<DrawAttributePass>();
 
-        // Create the key based on the view.
-        // In this case we only care about MSAA and HDR
-        let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_hdr(view.hdr);
-        // TurboTwin vendor patch: see queue_depth_pass — atmosphere views use
-        // the atmosphere mesh-view layout variant.
-        if has_atmosphere {
-            view_key |= MeshPipelineKey::ATMOSPHERE;
-        }
+        // See `queue_depth_pass`: read the view key, never rebuild it — the
+        // mesh-view bind group layout is derived from all 16 of its bits.
+        let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
+            continue;
+        };
 
         let attribute_key = AttributePipelineKey {
             mesh_key: view_key,
@@ -169,20 +160,26 @@ fn queue_attribute_pass(
         let pipeline_id =
             pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);
 
-        // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, _visible_entity) in visible_entities.iter::<PointCloud3d>() {
-            let Ok(main_entity) = main_entities.get(*render_entity) else {
-                warn!("Render entity not found, skipping.");
-                continue;
-            };
+        // bevy 0.19: `RenderVisibleEntities::iter::<C>()` is gone; the per-class
+        // lists live in `RenderVisibleEntitiesClass`, which also carries the
+        // change lists.
+        let Some(visible) = visible_entities.get::<PointCloud3d>() else {
+            continue;
+        };
+        // Drop entities that went invisible this frame out of the bin cache.
+        // `extract_camera_phases` clears `non_mesh_items` every frame, but 0.19
+        // no longer tick-sweeps `cached_entity_bin_keys` — the change list is how
+        // that is done now.
+        for (_, main_entity) in &visible.removed_entities {
+            custom_phase.remove(*main_entity);
+        }
+
+        // See `queue_depth_pass`: `iter_visible()` also covers `NoCpuCulling`.
+        for (render_entity, main_entity) in visible.iter_visible() {
             let Ok(point_cloud_3d) = point_clouds_3d.get(*render_entity) else {
                 warn!("point_cloud_3d missing");
                 continue;
             };
-
-            // Bump the change tick in order to force Bevy to rebuild the bin.
-            let this_tick = next_tick.get() + 1;
-            next_tick.set(this_tick);
 
             // At this point we have all the data we need to create a phase item and add it to our
             // phase
@@ -198,7 +195,6 @@ fn queue_attribute_pass(
                 (*render_entity, *main_entity),
                 InputUniformIndex::default(),
                 BinnedRenderPhaseType::NonMesh,
-                *next_tick,
             );
         }
     }

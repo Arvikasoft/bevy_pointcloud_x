@@ -46,7 +46,7 @@ pub fn prepare_point_cloud_octree_3d_uniform<'w>(
     mut material: (
         Res<'w, RenderAssets<bevy_render::texture::GpuImage>>,
         Res<'w, bevy_render::texture::FallbackImage>,
-        Res<'w, RenderAssets<bevy_render::storage::GpuShaderStorageBuffer>>,
+        Res<'w, RenderAssets<bevy_render::storage::GpuShaderBuffer>>,
     ),
 ) {
     let render_device = render_device.into_inner();

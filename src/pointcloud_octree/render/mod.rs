@@ -24,6 +24,7 @@ use prepare::{
 };
 
 use super::asset::extract::PointCloudOctreeNodeUniformLayout;
+use crate::render::configure_point_cloud_passes;
 
 #[derive(Default)]
 pub struct RenderPointCloudOctreePlugin;
@@ -33,6 +34,8 @@ impl Plugin for RenderPointCloudOctreePlugin {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
+
+        configure_point_cloud_passes(render_app);
 
         #[cfg(not(feature = "webgl"))]
         render_app

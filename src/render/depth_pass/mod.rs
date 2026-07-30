@@ -5,22 +5,21 @@ pub mod texture;
 
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy_ecs::{change_detection::Tick, prelude::*};
+use bevy_core_pipeline::Core3d;
+use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
-use bevy_pbr::{ExtractedAtmosphere, MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_pbr::{MeshPipelineSystems, SetMeshViewBindGroup, ViewKeyCache};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
-    prelude::*,
-    render_graph::{RenderGraphExt, ViewNodeRunner},
+    init_gpu_resource,
     render_phase::{
         AddRenderCommand, BinnedRenderPhaseType, DrawFunctions, InputUniformIndex, SetItemPipeline,
         ViewBinnedRenderPhases,
     },
     render_resource::{PipelineCache, SpecializedRenderPipelines},
     view::{ExtractedView, NoIndirectDrawing, RenderVisibleEntities, RetainedViewEntity},
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
 };
 use phase::PointCloud3dDepthPhase;
 
@@ -28,7 +27,7 @@ use crate::{
     point_cloud::PointCloud3d,
     render::{
         depth_pass::{
-            node::{DepthPassLabel, DepthPassNode},
+            node::pcl_depth_pass,
             pipeline::{DepthPipeline, DepthPipelineKey},
             texture::{prepare_depth_pass_textures, DepthPassLayout},
         },
@@ -36,7 +35,7 @@ use crate::{
         material::SetPointCloudMaterialGroup,
         phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
         point_cloud_uniform::SetPointCloudUniformGroup,
-        PointCloudRenderMode, PointCloudRenderModeOpt,
+        PointCloudPass, PointCloudRenderMode, PointCloudRenderModeOpt,
     },
 };
 
@@ -63,23 +62,26 @@ impl Plugin for DepthPassPlugin {
                     prepare_depth_pass_textures.in_set(RenderSystems::PrepareResources),
                     queue_depth_pass.in_set(RenderSystems::QueueMeshes),
                 ),
-            );
-
-        render_app
-            .add_render_graph_node::<ViewNodeRunner<DepthPassNode>>(Core3d, DepthPassLabel)
-            // Tell the node to run before the main transparent pass
-            .add_render_graph_edges(Core3d, (DepthPassLabel, Node3d::MainTransparentPass));
+            )
+            .add_systems(Core3d, pcl_depth_pass.in_set(PointCloudPass::Depth));
     }
 
     fn finish(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-        // The pipeline needs the RenderDevice to be created and it's only available once plugins
-        // are initialized
-        render_app
-            .init_resource::<DepthPassLayout>()
-            .init_resource::<DepthPipeline>();
+        // The layout needs the RenderDevice, which only exists once plugins are
+        // initialized.
+        render_app.init_resource::<DepthPassLayout>().add_systems(
+            // 0.19 moved `MeshPipeline` init out of `Plugin::finish` into
+            // `RenderStartup` (bevy_pbr render/mesh.rs ~L319), so a `FromWorld`
+            // pipeline reading it can no longer be built in `finish` — it panics
+            // with "Requested resource does not exist". Init it in `RenderStartup`
+            // ordered after the set that builds `MeshPipeline`, never on
+            // registration order. Same shape as bevy's own wireframe pipeline.
+            RenderStartup,
+            init_gpu_resource::<DepthPipeline>.after(MeshPipelineSystems),
+        );
     }
 }
 
@@ -132,7 +134,7 @@ fn extract_camera_phases(
     pointcloud3d_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn queue_depth_pass(
     custom_draw_functions: Res<DrawFunctions<PointCloud3dDepthPhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline>>,
@@ -140,32 +142,31 @@ fn queue_depth_pass(
     custom_draw_pipeline: Res<DepthPipeline>,
     point_clouds_3d: Query<&PointCloud3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>,
+    view_key_cache: Res<ViewKeyCache>,
     mut views: Query<(
         &ExtractedView,
         &RenderVisibleEntities,
-        &Msaa,
         Option<&PointCloudRenderMode>,
-        Has<ExtractedAtmosphere>,
     )>,
-    mut next_tick: Local<Tick>,
 ) {
-    for (view, visible_entities, msaa, point_cloud_render_mode, has_atmosphere) in &mut views {
+    for (view, visible_entities, point_cloud_render_mode) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
         let draw_custom = custom_draw_functions.read().id::<DrawDepthPass>();
 
-        // Create the key based on the view.
-        // In this case we only care about MSAA and HDR
-        let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_hdr(view.hdr);
-        // TurboTwin vendor patch: views with an atmosphere (e.g. cameras with
-        // bevy_pbr's `Atmosphere`) use the atmosphere variant of the mesh-view
-        // bind group layout (extra LUT bindings); the pipeline layout must be
-        // specialized to match or wgpu rejects the draw.
-        if has_atmosphere {
-            view_key |= MeshPipelineKey::ATMOSPHERE;
-        }
+        // NEVER hand-assemble this key. `MeshPipelineViewLayoutKey::from` maps 16
+        // bits of it into the mesh-view bind group *layout*, and
+        // `prepare_mesh_view_bind_groups` derives the matching bind group from the
+        // same view state — miss a bit (TONEMAP_IN_SHADER, ENVIRONMENT_MAP, SSAO,
+        // SSR, IRRADIANCE_VOLUME, CONTACT_SHADOWS, DISTANCE_FOG, ATMOSPHERE …) and
+        // `SetMeshViewBindGroup` fails wgpu validation, i.e. the points silently
+        // never draw. `ViewKeyCache` is bevy's answer to exactly this (it is what
+        // bevy's own 3D gizmo pass reads); it is filled in `RenderSystems::
+        // PrepareAssets`, before `QueueMeshes`.
+        let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
+            continue;
+        };
 
         let depth_key = DepthPipelineKey {
             mesh_key: view_key,
@@ -175,16 +176,28 @@ fn queue_depth_pass(
 
         let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
 
-        // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d>() {
+        // bevy 0.19: `RenderVisibleEntities::iter::<C>()` is gone; the per-class
+        // lists live in `RenderVisibleEntitiesClass`, which also carries the
+        // change lists.
+        let Some(visible) = visible_entities.get::<PointCloud3d>() else {
+            continue;
+        };
+        // Drop entities that went invisible this frame out of the bin cache.
+        // `extract_camera_phases` clears `non_mesh_items` every frame, but 0.19
+        // no longer tick-sweeps `cached_entity_bin_keys` — the change list is how
+        // that is done now.
+        for (_, main_entity) in &visible.removed_entities {
+            custom_phase.remove(*main_entity);
+        }
+
+        // `iter_visible()` (not `entities_cpu_culling`) is the 0.18
+        // `RenderVisibleEntities::iter::<C>()` equivalent — the CPU-culled list
+        // alone drops anything carrying `NoCpuCulling`.
+        for (render_entity, main_entity) in visible.iter_visible() {
             let Ok(point_cloud_3d) = point_clouds_3d.get(*render_entity) else {
                 warn!("point_cloud_3d missing");
                 continue;
             };
-
-            // Bump the change tick in order to force Bevy to rebuild the bin.
-            let this_tick = next_tick.get() + 1;
-            next_tick.set(this_tick);
 
             // At this point we have all the data we need to create a phase item and add it to our
             // phase
@@ -199,7 +212,6 @@ fn queue_depth_pass(
                 (*render_entity, *main_entity),
                 InputUniformIndex::default(),
                 BinnedRenderPhaseType::NonMesh,
-                *next_tick,
             );
         }
     }

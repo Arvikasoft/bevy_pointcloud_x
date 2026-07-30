@@ -59,7 +59,7 @@ impl AssetLoader for LasLoader {
         let mut min = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
         let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
 
-        las_reader.points().into_iter().for_each(|point| {
+        las_reader.points().for_each(|point| {
             let point = point.unwrap();
             let vec = Vec3::new(point.x as f32, point.y as f32, point.z as f32);
 

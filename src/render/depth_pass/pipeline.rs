@@ -150,7 +150,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
             // We want to reuse the data from bevy so we use the same bind groups as the default
             // mesh pipeline
             layout,
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             vertex: VertexState {
                 shader: self.shader_handle.clone(),
                 shader_defs: shader_defs.clone(),
@@ -184,8 +184,8 @@ impl SpecializedRenderPipeline for DepthPipeline {
             // We need to write the depth information into the depth buffer
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::GreaterEqual,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(CompareFunction::GreaterEqual),
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             }),

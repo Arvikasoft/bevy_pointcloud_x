@@ -16,6 +16,10 @@ use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
 use bevy_asset::{load_internal_asset, prelude::*, uuid_handle};
 use bevy_camera::visibility::calculate_bounds;
+use bevy_core_pipeline::{
+    core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
+    Core3d, Core3dSystems,
+};
 use bevy_ecs::prelude::*;
 use bevy_render::{
     camera::extract_cameras,
@@ -44,6 +48,47 @@ const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
 
 const NORMALIZE_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("0e5fffec-7e0b-4b44-8c32-b92d9b99fd58");
+
+/// Ordering of the point-cloud passes inside the [`Core3d`] schedule.
+///
+/// bevy 0.19 replaced the render graph with ECS schedules, so the old
+/// `RenderLabel` edges — `DepthPass -> AttributePass -> NormalizePass ->
+/// MainTransparentPass` — are system sets now. Both the simple and the octree
+/// renderer feed the same three sets, which is how they used to share
+/// `NormalizePassLabel`.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PointCloudPass {
+    Depth,
+    Attribute,
+    Normalize,
+}
+
+/// Installs the [`PointCloudPass`] ordering. Called from both
+/// [`RenderPipelinePlugin`] and the octree renderer plugin, since either can be
+/// used without the other; repeating identical set configuration is a no-op.
+///
+/// Add the point-cloud plugins AFTER `CorePipelinePlugin` (`DefaultPlugins`
+/// does). `Core3dPlugin::build` calls `add_schedule(Core3d::base_schedule())`,
+/// and that REPLACES: configuring the schedule first means this ordering — and
+/// the pass systems — are thrown away when core3d lands, with no error unless
+/// bevy's `trace` feature is on.
+pub(crate) fn configure_point_cloud_passes(render_app: &mut SubApp) {
+    render_app.configure_sets(
+        Core3d,
+        (
+            PointCloudPass::Depth,
+            PointCloudPass::Attribute,
+            PointCloudPass::Normalize,
+        )
+            .chain()
+            .in_set(Core3dSystems::MainPass)
+            // The graph only pinned "before the transparent pass"; the opaque
+            // ordering was implicit in the 0.18 topological sort. Spell it out:
+            // these passes load the depth buffer opaque geometry wrote.
+            .after(main_opaque_pass_3d)
+            .before(main_transparent_pass_3d),
+    );
+}
 
 pub struct RenderPipelinePlugin;
 
@@ -80,6 +125,7 @@ impl Plugin for RenderPipelinePlugin {
             );
 
         let render_app = app.sub_app_mut(RenderApp);
+        configure_point_cloud_passes(render_app);
         render_app
             .insert_resource(NeighboursCache::default())
             .add_systems(

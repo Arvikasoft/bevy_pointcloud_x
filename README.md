@@ -38,6 +38,7 @@ are offered upstream; if upstream publishes to crates.io one day, prefer it.
 | `bevy_pointcloud_x` | Bevy |
 |---|---|
 | 0.1 | 0.18 |
+| 0.2 | 0.19 |
 
 ---
 
