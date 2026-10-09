@@ -1,6 +1,6 @@
 [package]
 name = "bevy_pointcloud_x"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 repository = "https://github.com/Arvikasoft/bevy_pointcloud_x"
 license = "MIT"
@@ -35,27 +35,27 @@ crate-type = ["lib"]
 unexpected_cfgs = "allow"
 
 [dependencies]
-bevy_app = { version = "=0.19.0" }
-bevy_camera = { version = "=0.19.0" }
-bevy_ecs = { version = "=0.19.0" }
-bevy_pbr = { version = "=0.19.0" }
-bevy_render = { version = "=0.19.0" }
-bevy_core_pipeline = { version = "=0.19.0" }
-bevy_asset = { version = "=0.19.0" }
-bevy_log = { version = "=0.19.0" }
-bevy_math = { version = "=0.19.0" }
-bevy_mesh = { version = "=0.19.0" }
-bevy_shader = { version = "=0.19.0" }
-bevy_derive = { version = "=0.19.0" }
-bevy_reflect = { version = "=0.19.0" }
-bevy_transform = { version = "=0.19.0" }
-bevy_platform = { version = "=0.19.0" }
-bevy_utils = { version = "=0.19.0" }
-bevy_image = { version = "=0.19.0" }
-bevy_color = { version = "=0.19.0" }
-bevy_diagnostic = { version = "=0.19.0" }
-bevy_time = { version = "=0.19.0" }
-bevy_tasks = { version = "=0.19.0" }
+bevy_app = { version = "0.19" }
+bevy_camera = { version = "0.19" }
+bevy_ecs = { version = "0.19" }
+bevy_pbr = { version = "0.19" }
+bevy_render = { version = "0.19" }
+bevy_core_pipeline = { version = "0.19" }
+bevy_asset = { version = "0.19" }
+bevy_log = { version = "0.19" }
+bevy_math = { version = "0.19" }
+bevy_mesh = { version = "0.19" }
+bevy_shader = { version = "0.19" }
+bevy_derive = { version = "0.19" }
+bevy_reflect = { version = "0.19" }
+bevy_transform = { version = "0.19" }
+bevy_platform = { version = "0.19" }
+bevy_utils = { version = "0.19" }
+bevy_image = { version = "0.19" }
+bevy_color = { version = "0.19" }
+bevy_diagnostic = { version = "0.19" }
+bevy_time = { version = "0.19" }
+bevy_tasks = { version = "0.19" }
 
 smallvec = { version = "1", default-features = false }
 indexmap = { version = "2.5.0", default-features = false }
