@@ -7,7 +7,7 @@ use bevy_render::{
     render_phase::BinnedPhaseItem,
     render_resource::{RenderPassDescriptor, StoreOp},
     renderer::{RenderContext, ViewQuery},
-    view::{ExtractedView, ViewDepthTexture},
+    view::{ExtractedView, ViewDepthStencilTexture},
 };
 
 use crate::{
@@ -23,7 +23,7 @@ pub fn pcl_octree_attribute_pass<BPI: BinnedPhaseItem>(
     view: ViewQuery<(
         &ExtractedCamera,
         &ExtractedView,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &ViewAttributePrepassTextures,
     )>,
     point_cloud_3d_phases: Res<ViewOctreeNodesRenderAttributePhases<BPI>>,

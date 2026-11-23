@@ -1,5 +1,5 @@
 use bevy_ecs::query::QueryItem;
-use bevy_render::{extract_component::ExtractComponent, sync_component::SyncComponent};
+use bevy_render::{extract_component::ExtractComponent, sync_component::SyncComponent, RenderApp};
 use bevy_transform::prelude::GlobalTransform;
 
 use crate::{
@@ -10,11 +10,11 @@ use crate::{
 // bevy 0.19 split the render-world cleanup contract out of `ExtractComponent`:
 // `Target` is what gets removed from the render world when `PointCloud3d` is
 // removed from the main world, so it mirrors `Out`.
-impl SyncComponent for PointCloud3d {
+impl SyncComponent<RenderApp> for PointCloud3d {
     type Target = (PointCloud3d, PointCloudUniform, PointCloudMaterial3d);
 }
 
-impl ExtractComponent for PointCloud3d {
+impl ExtractComponent<RenderApp> for PointCloud3d {
     type QueryData = (
         &'static PointCloud3d,
         &'static GlobalTransform,

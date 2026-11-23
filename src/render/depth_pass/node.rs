@@ -5,7 +5,7 @@ use bevy_render::{
     render_phase::ViewBinnedRenderPhases,
     render_resource::{RenderPassDescriptor, StoreOp},
     renderer::{RenderContext, ViewQuery},
-    view::{ExtractedView, ViewDepthTexture},
+    view::{ExtractedView, ViewDepthStencilTexture},
 };
 
 use crate::render::depth_pass::{phase::PointCloud3dDepthPhase, texture::ViewDepthPrepassTextures};
@@ -21,7 +21,7 @@ pub fn pcl_depth_pass(
     view: ViewQuery<(
         &ExtractedCamera,
         &ExtractedView,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &ViewDepthPrepassTextures,
     )>,
     point_cloud_3d_phases: Res<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>,

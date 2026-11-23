@@ -37,12 +37,15 @@ impl FromWorld for PointCloudOctree3dUniformLayout {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_point_cloud_octree_3d_uniform<'w>(
     mut commands: Commands,
     point_cloud_octree_3d_uniform_layout: Res<PointCloudOctree3dUniformLayout>,
     query: Query<(Entity, &PointCloudOctree3dUniform)>,
     render_device: Res<RenderDevice>,
     pipeline_cache: Res<PipelineCache>,
+    fallback_buffer: Res<bevy_render::material_bind_groups::FallbackBuffer>,
+    shader_buffers: Res<RenderAssets<bevy_render::storage::GpuShaderBuffer>>,
     mut material: (
         Res<'w, RenderAssets<bevy_render::texture::GpuImage>>,
         Res<'w, bevy_render::texture::FallbackImage>,
@@ -58,6 +61,8 @@ pub fn prepare_point_cloud_octree_3d_uniform<'w>(
                 &point_cloud_octree_3d_uniform_layout.layout,
                 render_device,
                 pipeline_cache,
+                &fallback_buffer,
+                &shader_buffers,
                 &mut material,
             )
             .expect("Unable to build bind group from PointCloudUniform.");

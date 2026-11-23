@@ -157,7 +157,7 @@ fn queue_depth_pass(
         let draw_custom = custom_draw_functions.read().id::<DrawDepthPass>();
 
         // See the simple path's `queue_depth_pass`: read the view key, never
-        // rebuild it — the mesh-view bind group layout is derived from all 16
+        // rebuild it — the mesh-view bind group layout is derived from all 17
         // of its bits, and a missing one is a silent wgpu validation failure.
         let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
             continue;

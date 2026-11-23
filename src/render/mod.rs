@@ -94,19 +94,18 @@ pub struct RenderPipelinePlugin;
 
 impl Plugin for RenderPipelinePlugin {
     fn build(&self, app: &mut App) {
+        // An explicit embedded path gives each shader a fixed WESL module path,
+        // whatever directory the crate is built from.
         load_internal_asset!(
             app,
             POINTCLOUD_SHADER_HANDLE,
-            "point_cloud.wgsl",
-            Shader::from_wgsl
+            "point_cloud.wesl",
+            |src, _| Shader::from_wesl(src, "embedded://bevy_pointcloud_x/render/point_cloud.wesl")
         );
 
-        load_internal_asset!(
-            app,
-            NORMALIZE_SHADER_HANDLE,
-            "normalize.wgsl",
-            Shader::from_wgsl
-        );
+        load_internal_asset!(app, NORMALIZE_SHADER_HANDLE, "normalize.wesl", |src, _| {
+            Shader::from_wesl(src, "embedded://bevy_pointcloud_x/render/normalize.wesl")
+        });
 
         // Automatically create uniform from these settings
         app.add_plugins(RenderAssetPlugin::<RenderPointCloud>::default())

@@ -155,7 +155,7 @@ fn queue_depth_pass(
         };
         let draw_custom = custom_draw_functions.read().id::<DrawDepthPass>();
 
-        // NEVER hand-assemble this key. `MeshPipelineViewLayoutKey::from` maps 16
+        // NEVER hand-assemble this key. `MeshPipelineViewLayoutKey::from` maps 17
         // bits of it into the mesh-view bind group *layout*, and
         // `prepare_mesh_view_bind_groups` derives the matching bind group from the
         // same view state — miss a bit (TONEMAP_IN_SHADER, ENVIRONMENT_MAP, SSAO,

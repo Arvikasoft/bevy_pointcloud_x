@@ -2,13 +2,8 @@
 // Copyright (c) 2011-2020, Markus Schütz
 // Licensed under BSD 2-Clause (see THIRD_PARTY_LICENSES.md)
 
-#import bevy_pbr::mesh_view_bindings as view_bindings
-#import bevy_pbr::mesh_functions::mesh_position_local_to_world
-
-#import bevy_pbr::view_transformations::position_world_to_clip
-#import bevy_pbr::view_transformations::position_world_to_view
-#import bevy_pbr::view_transformations::position_view_to_clip
-#import bevy_pbr::view_transformations::position_view_to_ndc
+import bevy_pbr::render::mesh_view_bindings as view_bindings;
+import bevy_pbr::render::view_transformations::{position_world_to_view, position_view_to_clip, position_view_to_ndc};
 
 struct Vertex {
     // This is needed if you are using batching and/or gpu preprocessing
@@ -39,16 +34,15 @@ struct PointCloudMaterial {
     point_size: f32,
     min_point_size: f32,
     max_point_size: f32,
-#ifdef SIXTEEN_BYTE_ALIGNMENT
     // WebGL2 structs must be 16 byte aligned.
+    @if(SIXTEEN_BYTE_ALIGNMENT)
     _webgl2_padding: f32,
-#endif
 };
 
 @group(2) @binding(0)
 var<uniform> material: PointCloudMaterial;
 
-#ifdef IS_OCTREE
+@if(IS_OCTREE) {
 
 struct OctreeNode {
     spacing: f32,
@@ -59,10 +53,9 @@ struct OctreeNode {
 
 struct OctreeEntity {
     octree_index: u32,
-#ifdef SIXTEEN_BYTE_ALIGNMENT
     // WebGL2 structs must be 16 byte aligned.
+    @if(SIXTEEN_BYTE_ALIGNMENT)
     _webgl2_padding: vec3<f32>,
-#endif
 };
 
 @group(3) @binding(0)
@@ -74,7 +67,7 @@ var<uniform> octree_node: OctreeNode;
 @group(5) @binding(0)
 var<uniform> octree_entity: OctreeEntity;
 
-#endif
+}
 
 const PI: f32 = 3.14159265358979323846264338327950288;
 
@@ -94,7 +87,7 @@ fn extract_max_scale(matrix: mat4x4<f32>) -> f32 {
 }
 
 
-#ifdef IS_OCTREE
+@if(IS_OCTREE) {
 
 
 fn is_bit_set(number: u32, index: u32) -> bool {
@@ -172,7 +165,7 @@ fn get_max_relative_depth(position: vec3<f32>) -> f32 {
     return f32(relative_depth);
 }
 
-#endif
+}
 
 
 @vertex
@@ -184,10 +177,15 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     let transform_scale = extract_max_scale(world_from_local);
 
     // Compute world & view position of the point instance (applying the world_from_local matrix)
-    let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
+    let world_position = world_from_local * vec4<f32>(vertex.i_pos_size.xyz, 1.0);
     var view_position = position_world_to_view(world_position.xyz);
 
-#ifdef IS_OCTREE
+    // Declared out here because a statement block below is its own scope.
+    var radius: f32;
+    @if(IS_OCTREE)
+    var max_relative_depth: f32;
+
+    @if(IS_OCTREE) {
     // Get the fov from projection matrix
     let f = view_bindings::view.clip_from_view[1][1];
     let fov = 2.0 * atan(1.0 / f);
@@ -202,7 +200,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     //   model_view * vec4(octree_node.spacing, 0, 0, 1)
     // ) / octree_node.spacing;
 
-    let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
+    max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
     let attenuation = exp2(max_relative_depth);
     //let attenuation = pow(2.0, max_relative_depth);
 
@@ -214,8 +212,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     radius_screen = min(material.max_point_size, radius_screen);
 
 
-    let radius = radius_screen / proj_factor;
-#else
+    radius = radius_screen / proj_factor;
+    } @else {
     let point_size = select(material.point_size, vertex.i_pos_size.w, material.point_size <= 0.0) * transform_scale;
 
     // TurboTwin vendor patch: clamp to a minimum SCREEN-SPACE size, mirroring
@@ -227,8 +225,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     let proj_factor_simple = -0.5 * viewport[3] / (slope_simple * view_position.z);
     var radius_screen_simple = (point_size / min(viewport[2], viewport[3])) * proj_factor_simple;
     radius_screen_simple = clamp(radius_screen_simple, material.min_point_size, material.max_point_size);
-    let radius = radius_screen_simple / proj_factor_simple;
-#endif
+    radius = radius_screen_simple / proj_factor_simple;
+    }
 
     // Compute the offset to apply for creating a quad
     let offset = vertex.position.xy * radius;
@@ -243,8 +241,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 
     out.color = vertex.i_color;
 
-#ifdef IS_OCTREE
-#ifdef DEBUG_COLOR
+    @if(IS_OCTREE && DEBUG_COLOR) {
     var debug_color = vec3<f32>(1.0, 1.0, 1.0);
 
     let absolute_depth = u32(max_relative_depth) + octree_node.level;
@@ -260,14 +257,13 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     }
 
     out.color = vec4<f32>(debug_color, 1.0);
-#endif // DEBUG_COLOR
-#endif // IS_OCTREE
+    }
 
     out.uv = vertex.position.xy + vec2(0.5);
     out.log_depth = log2(-view_position.z);
     out.radius = radius;
 
-	#ifdef HQ_DEPTH_PASS
+	@if(HQ_DEPTH_PASS) {
 		let original_depth = clip_position.w;
 		let adjusted_depth = original_depth + 2.0 * radius;
 		let adjust = adjusted_depth / original_depth;
@@ -276,21 +272,18 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         view_position += vec3<f32>(offset, 0.0);
 
         out.clip_position = position_view_to_clip(view_position);
-	#endif
+	}
 
     return out;
 }
 
 struct FragmentOutput {
-#ifdef DEPTH_PASS
-    #ifdef USE_EDL
+    @if(DEPTH_PASS && USE_EDL)
     @location(0) depth_texture: vec2<f32>,
-    #else // USE EDL
+    @if(DEPTH_PASS && !USE_EDL)
     @location(0) depth_texture: f32,
-    #endif // USE EDL
-#else
+    @if(!DEPTH_PASS)
     @location(0) color: vec4<f32>,
-#endif
     @builtin(frag_depth) depth: f32,
 }
 
@@ -310,15 +303,15 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
 
     output.depth = in.clip_position.z;
 
-#ifdef DEPTH_PASS
-    #ifdef USE_EDL
+    @if(DEPTH_PASS) {
+    @if(USE_EDL) {
         output.depth_texture.r = in.clip_position.z;
         output.depth_texture.g = in.log_depth;
-    #else // USE_EDL
+    } @else {
         output.depth_texture = in.clip_position.z;
-    #endif // USE_EDL
+    }
 
-    #ifdef PARABOLOID_POINT_SHAPE
+    @if(PARABOLOID_POINT_SHAPE) {
     let radius = in.radius;
     let wi = 0.0 - cc;
     var pos = in.view_position;
@@ -329,11 +322,11 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     let exp_depth = clip_pos.z * 2.0 - 1.0;
 
     output.depth = clip_pos.z;
-    #endif
-#else // DEPTH_PASS
+    }
+    } @else {
     output.color = vec4(color, 1.0);
 
-    #ifdef PARABOLOID_POINT_SHAPE
+    @if(PARABOLOID_POINT_SHAPE) {
     let radius = in.radius;
     let wi = 0.0 - cc;
     var pos = in.view_position;
@@ -344,17 +337,17 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     let exp_depth = clip_pos.z * 2.0 - 1.0;
 
     output.depth = clip_pos.z;
-    #endif
+    }
 
-    #ifdef WEIGHTED_SPLATS
+    @if(WEIGHTED_SPLATS) {
     let distance = sqrt(cc);
     var weight = max(0.0, 1.0 - distance);
     weight = pow(weight, 1.5);
 
     output.color = vec4(color * weight, weight);
-    #endif
+    }
 
-#endif // DEPTH_PASS
+    }
 
     return output;
 }

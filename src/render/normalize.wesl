@@ -23,26 +23,27 @@
 // As you can see, the triangle ends up bigger than the screen.
 //
 // You don't need to worry about this too much since bevy will compute the correct UVs for you.
-#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
+import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 
-#ifdef MULTISAMPLED
+@if(MULTISAMPLED) {
 
 @group(0) @binding(0) var depth_texture: texture_multisampled_2d<f32>;
 @group(0) @binding(1) var attribute_texture: texture_multisampled_2d<f32>;
 
-#else // MULTISAMPLED
+}
+@if(!MULTISAMPLED) {
 
 @group(0) @binding(0) var depth_texture: texture_2d<f32>;
 @group(0) @binding(1) var attribute_texture: texture_2d<f32>;
 
-#endif // MULTISAMPLED
+}
 
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
 }
 
 
-#ifdef USE_EDL
+@if(USE_EDL) {
 
 struct EyeDomeLightingUniform {
     strength: f32,
@@ -75,7 +76,7 @@ fn response(depth: f32, uv: vec2<f32>) -> f32{
 			}
 		}
 
-		if (#{NEIGHBOUR_COUNT}u > 4) {
+		if (constants::NEIGHBOUR_COUNT > 4) {
             var uv_neighbor_1 = uv + uv_radius * edl.neighbours[i].zw;
             uv_neighbor_1.x *= edl.screen_width;
             uv_neighbor_1.y *= edl.screen_height;
@@ -92,24 +93,27 @@ fn response(depth: f32, uv: vec2<f32>) -> f32{
 		}
 	}
 
-    let a = f32(#{NEIGHBOUR_COUNT}u);
+    let a = f32(constants::NEIGHBOUR_COUNT);
 	return sum / a;
 }
 
 
-#endif
+}
 
 
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
 
-#ifdef USE_EDL
+    // One @if per statement, not a block: a block would hide `shade`, which is
+    // read again below.
+    @if(USE_EDL)
     let edl_depth = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0).g;
 
+    @if(USE_EDL)
     let res = response(edl_depth, in.uv);
+    @if(USE_EDL)
     let shade = exp(-res * 300.0 * edl.strength);
-#endif // USE_EDL
 
     let depth = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0).r;
 
@@ -122,9 +126,8 @@ fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
     var output: FragmentOutput;
     output.color = stored_color / stored_color.a;
 
-#ifdef USE_EDL
+    @if(USE_EDL)
     output.color = output.color * shade;
-#endif // USE_EDL
 
     output.color.a = 1.0;
 

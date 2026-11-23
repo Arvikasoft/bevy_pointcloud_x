@@ -1,6 +1,6 @@
 use bevy_asset::{AssetId, Handle};
 use bevy_ecs::{prelude::*, query::QueryItem};
-use bevy_render::{extract_component::ExtractComponent, sync_component::SyncComponent};
+use bevy_render::{extract_component::ExtractComponent, sync_component::SyncComponent, RenderApp};
 use bevy_transform::prelude::GlobalTransform;
 
 use super::asset::data::PointCloudNodeData;
@@ -18,8 +18,8 @@ impl From<&PointCloudOctree3d> for AssetId<Octree<PointCloudNodeData>> {
     }
 }
 
-// bevy 0.19: see the note on `impl SyncComponent for PointCloud3d`.
-impl SyncComponent for PointCloudOctree3d {
+// bevy 0.19: see the note on `impl SyncComponent<RenderApp> for PointCloud3d`.
+impl SyncComponent<RenderApp> for PointCloudOctree3d {
     type Target = (
         PointCloudOctree3d,
         PointCloudOctree3dUniform,
@@ -27,7 +27,7 @@ impl SyncComponent for PointCloudOctree3d {
     );
 }
 
-impl ExtractComponent for PointCloudOctree3d {
+impl ExtractComponent<RenderApp> for PointCloudOctree3d {
     type QueryData = (
         &'static PointCloudOctree3d,
         &'static GlobalTransform,

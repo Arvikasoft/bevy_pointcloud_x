@@ -156,6 +156,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
                 shader_defs: shader_defs.clone(),
                 entry_point: Some("vertex".into()),
                 buffers: vec![vertex_buffer_layout, instance_buffer_layout],
+                constants: Vec::new(),
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
@@ -173,6 +174,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
+                constants: Vec::new(),
             }),
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::TriangleList,
