@@ -2,7 +2,7 @@ use bevy_ecs::prelude::*;
 use bevy_render::{
     render_resource::*,
     renderer::{RenderContext, ViewQuery},
-    view::{ViewDepthTexture, ViewTarget},
+    view::{ViewDepthStencilTexture, ViewTarget},
 };
 
 use crate::render::normalize_pass::{
@@ -16,7 +16,7 @@ pub fn pcl_normalize_pass(
     pipeline_cache: Res<PipelineCache>,
     view: ViewQuery<(
         &ViewTarget,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &NormalizePassBindGroup,
         Option<&NormalizePassEdlBindgroup>,
         &NormalizePassPipelineId,

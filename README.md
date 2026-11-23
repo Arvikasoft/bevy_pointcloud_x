@@ -39,6 +39,7 @@ are offered upstream; if upstream publishes to crates.io one day, prefer it.
 |---|---|
 | 0.1 | 0.18 |
 | 0.2 | 0.19 |
+| 0.3 | 0.20 |
 
 ---
 

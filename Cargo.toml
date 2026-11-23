@@ -1,7 +1,8 @@
 [package]
 name = "bevy_pointcloud_x"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
+rust-version = "1.97.1"
 repository = "https://github.com/Arvikasoft/bevy_pointcloud_x"
 license = "MIT"
 description = "Potree-style point-cloud rendering for Bevy (EDL shading, octree LOD) — a crates.io-publishable fork of rlamarche/bevy_pointcloud with WebGPU/MSAA fixes."
@@ -22,7 +23,7 @@ resolver = "2"
 # the atmosphere mesh-view-layout bit on the depth/attribute pipeline keys,
 # f16 depth/attribute intermediates (WebGPU still guarantees neither MSAA on
 # rg32float/rgba32float nor blending on any 32-bit float target without the
-# optional float32-blendable feature — re-verified against wgpu 29),
+# optional float32-blendable feature — re-verified against wgpu 30),
 # attribute/depth passes match the view's MSAA sample count, and a
 # screen-space minimum point size in the simple (non-octree) path.
 
@@ -35,27 +36,27 @@ crate-type = ["lib"]
 unexpected_cfgs = "allow"
 
 [dependencies]
-bevy_app = { version = "0.19" }
-bevy_camera = { version = "0.19" }
-bevy_ecs = { version = "0.19" }
-bevy_pbr = { version = "0.19" }
-bevy_render = { version = "0.19" }
-bevy_core_pipeline = { version = "0.19" }
-bevy_asset = { version = "0.19" }
-bevy_log = { version = "0.19" }
-bevy_math = { version = "0.19" }
-bevy_mesh = { version = "0.19" }
-bevy_shader = { version = "0.19" }
-bevy_derive = { version = "0.19" }
-bevy_reflect = { version = "0.19" }
-bevy_transform = { version = "0.19" }
-bevy_platform = { version = "0.19" }
-bevy_utils = { version = "0.19" }
-bevy_image = { version = "0.19" }
-bevy_color = { version = "0.19" }
-bevy_diagnostic = { version = "0.19" }
-bevy_time = { version = "0.19" }
-bevy_tasks = { version = "0.19" }
+bevy_app = { version = "0.20" }
+bevy_camera = { version = "0.20" }
+bevy_ecs = { version = "0.20" }
+bevy_pbr = { version = "0.20" }
+bevy_render = { version = "0.20" }
+bevy_core_pipeline = { version = "0.20" }
+bevy_asset = { version = "0.20" }
+bevy_log = { version = "0.20" }
+bevy_math = { version = "0.20" }
+bevy_mesh = { version = "0.20" }
+bevy_shader = { version = "0.20" }
+bevy_derive = { version = "0.20" }
+bevy_reflect = { version = "0.20" }
+bevy_transform = { version = "0.20" }
+bevy_platform = { version = "0.20" }
+bevy_utils = { version = "0.20" }
+bevy_image = { version = "0.20" }
+bevy_color = { version = "0.20" }
+bevy_diagnostic = { version = "0.20" }
+bevy_time = { version = "0.20" }
+bevy_tasks = { version = "0.20" }
 
 smallvec = { version = "1", default-features = false }
 indexmap = { version = "2.5.0", default-features = false }
@@ -76,6 +77,16 @@ crossbeam = { version = "0.8", features = [
 async-trait = "0.1"
 ordered-float = "5.1.0"
 priority-queue = "2.7.0"
+
+[dev-dependencies]
+# tests/shaders_compile.rs: a headless app that builds every pipeline.
+bevy = { version = "0.20", default-features = false, features = [
+    "std",
+    "async_executor",
+    "bevy_asset",
+    "bevy_window",
+    "bevy_pbr",
+] }
 
 [features]
 default = ["las", "ply"]

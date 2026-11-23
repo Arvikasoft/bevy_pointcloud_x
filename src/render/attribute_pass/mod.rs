@@ -147,7 +147,7 @@ fn queue_attribute_pass(
         let draw_custom = custom_draw_functions.read().id::<DrawAttributePass>();
 
         // See `queue_depth_pass`: read the view key, never rebuild it — the
-        // mesh-view bind group layout is derived from all 16 of its bits.
+        // mesh-view bind group layout is derived from all 17 of its bits.
         let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
             continue;
         };

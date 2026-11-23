@@ -16,7 +16,7 @@ use crate::{
 
 /// Detects removed octrees and trace it along with the [`RenderEntity`] component.
 pub fn on_remove_octree<E: OctreeNodeExtraction>(
-    trigger: On<Remove, E::Component>,
+    trigger: On<Remove<E::Component>>,
     query: Query<&RenderEntity>,
     view_visible_octree_nodes: Query<&mut ViewVisibleOctreeNodes<E::NodeData, E::Component>>,
     mut octree_node_allocations: ResMut<OctreeNodeAllocations<E>>,

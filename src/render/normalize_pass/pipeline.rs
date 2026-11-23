@@ -124,6 +124,7 @@ impl SpecializedRenderPipeline for NormalizePassPipeline {
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
+                constants: Vec::new(),
             }),
             primitive: PrimitiveState::default(),
             depth_stencil: Some(DepthStencilState {

@@ -5,7 +5,7 @@ use bevy_render::{
     render_phase::ViewBinnedRenderPhases,
     render_resource::{RenderPassDescriptor, StoreOp},
     renderer::{RenderContext, ViewQuery},
-    view::{ExtractedView, ViewDepthTexture},
+    view::{ExtractedView, ViewDepthStencilTexture},
 };
 
 use super::texture::ViewAttributePrepassTextures;
@@ -18,7 +18,7 @@ pub fn pcl_attribute_pass(
     view: ViewQuery<(
         &ExtractedCamera,
         &ExtractedView,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &ViewAttributePrepassTextures,
     )>,
     point_cloud_3d_phases: Res<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,

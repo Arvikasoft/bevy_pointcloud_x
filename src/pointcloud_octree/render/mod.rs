@@ -12,6 +12,7 @@ pub mod depth_pass;
 pub mod indirect;
 
 use bevy_app::prelude::*;
+#[cfg(not(feature = "webgl"))]
 use bevy_camera::Camera3d;
 use bevy_ecs::prelude::*;
 use bevy_render::{Render, RenderApp, RenderSystems};

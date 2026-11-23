@@ -40,6 +40,8 @@ pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
         };
         let mut octree_buffer = UniformBuffer::from(PointCloudOctreeUniform {
             octree_index: *octree_index as u32,
+            #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
+            _webgl2_padding: Default::default(),
         });
         octree_buffer.write_buffer(&render_device, &render_queue);
 

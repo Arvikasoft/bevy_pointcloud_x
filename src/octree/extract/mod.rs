@@ -53,7 +53,7 @@ use crate::octree::{
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     type NodeData: NodeData;
 
-    type Component: Component + ExtractComponent;
+    type Component: Component + ExtractComponent<RenderApp>;
 
     type ExtractedNodeData: RenderNodeData;
 
