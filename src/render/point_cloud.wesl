@@ -180,7 +180,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     let world_position = world_from_local * vec4<f32>(vertex.i_pos_size.xyz, 1.0);
     var view_position = position_world_to_view(world_position.xyz);
 
-    // Declared out here because a statement block below is its own scope.
+    // Declared before the @if/@else so both branches assign the same variable.
     var radius: f32;
     @if(IS_OCTREE)
     var max_relative_depth: f32;
