@@ -2,8 +2,11 @@
 //! checks that the WESL shaders compile. Rust builds fine when a shader is
 //! wrong: the error only shows when a pipeline is created.
 //!
-//! The cameras cover EDL on and off, MSAA on and off, and the simple and the
-//! octree renderer. Without an adapter the test prints a note and passes.
+//! The cameras cover EDL on and off and MSAA on and off for the simple
+//! renderer. The octree path's IS_OCTREE variants of the depth and attribute
+//! pipelines are specialized directly with the same view keys (there is no
+//! octree in the scene), so their shaders compile too, but no octree is drawn.
+//! Without an adapter the test prints a note and passes.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
@@ -12,10 +15,15 @@ use bevy::{
     app::{App, PluginsState},
     asset::Assets,
     camera::{Camera3d, RenderTarget},
+    ecs::world::Mut,
     image::Image,
     math::Vec3,
+    pbr::ViewKeyCache,
     render::{
-        render_resource::{CachedPipelineState, PipelineCache, PipelineDescriptor, TextureFormat},
+        render_resource::{
+            CachedPipelineState, PipelineCache, PipelineDescriptor, SpecializedRenderPipelines,
+            TextureFormat,
+        },
         view::{Msaa, Tonemapping},
         RenderApp, RenderPlugin,
     },
@@ -28,7 +36,11 @@ use bevy_pointcloud_x::{
     point_cloud::{PointCloud, PointCloud3d, PointCloudData},
     point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
     pointcloud_octree::PointCloudOctreePlugin,
-    render::PointCloudRenderMode,
+    render::{
+        attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey},
+        depth_pass::pipeline::{DepthPipeline, DepthPipelineKey},
+        PointCloudRenderMode,
+    },
     PointCloudPlugin,
 };
 
@@ -137,9 +149,14 @@ fn point_cloud_shaders_compile() {
     for _ in 0..FRAMES {
         app.update();
     }
+    specialize_octree_variants(&mut app);
+    for _ in 0..FRAMES {
+        app.update();
+    }
 
     let cache = app.sub_app(RenderApp).world().resource::<PipelineCache>();
     let mut ours = Vec::new();
+    let mut octree = Vec::new();
     for pipeline in cache.pipelines() {
         let label = match &pipeline.descriptor {
             PipelineDescriptor::RenderPipelineDescriptor(d) => d.label.clone(),
@@ -150,6 +167,11 @@ fn point_cloud_shaders_compile() {
         .unwrap_or_default();
         if let CachedPipelineState::Err(err) = &pipeline.state {
             panic!("pipeline {label:?} failed: {err}");
+        }
+        if let PipelineDescriptor::RenderPipelineDescriptor(d) = &pipeline.descriptor
+            && d.vertex.shader_defs.contains(&"IS_OCTREE".into())
+        {
+            octree.push(label.clone());
         }
         if label.starts_with("pcl_") {
             // A shader whose import does not resolve stays queued for good,
@@ -174,4 +196,59 @@ fn point_cloud_shaders_compile() {
     ] {
         assert!(ours.iter().any(|l| l == name), "no {name} was built");
     }
+    // The IS_OCTREE variants of depth and attribute (ready, checked above).
+    octree.sort();
+    println!("octree variants compiled: {octree:?}");
+    for name in ["pcl_depth_pass_pipeline", "pcl_attribute_pass_pipeline"] {
+        assert!(
+            octree.iter().any(|l| l == name),
+            "no IS_OCTREE {name} was built"
+        );
+    }
+}
+
+/// The octree queue systems specialize the depth and attribute pipelines with
+/// `is_octree` only for a view that sees an octree, and this scene has none.
+/// Specialize them the same way here, with each view's key, so the IS_OCTREE
+/// shader variants are compiled too.
+fn specialize_octree_variants(app: &mut App) {
+    let world = app.sub_app_mut(RenderApp).world_mut();
+    let keys: Vec<_> = world.resource::<ViewKeyCache>().values().copied().collect();
+    assert!(
+        !keys.is_empty(),
+        "no view key to specialize the octree variants with"
+    );
+    world.resource_scope(
+        |world, mut depth: Mut<SpecializedRenderPipelines<DepthPipeline>>| {
+            for &mesh_key in &keys {
+                for use_edl in [false, true] {
+                    let key = DepthPipelineKey {
+                        mesh_key,
+                        use_edl,
+                        is_octree: true,
+                    };
+                    depth.specialize(
+                        world.resource::<PipelineCache>(),
+                        world.resource::<DepthPipeline>(),
+                        key,
+                    );
+                }
+            }
+        },
+    );
+    world.resource_scope(
+        |world, mut attribute: Mut<SpecializedRenderPipelines<AttributePassPipeline>>| {
+            for &mesh_key in &keys {
+                let key = AttributePipelineKey {
+                    mesh_key,
+                    is_octree: true,
+                };
+                attribute.specialize(
+                    world.resource::<PipelineCache>(),
+                    world.resource::<AttributePassPipeline>(),
+                    key,
+                );
+            }
+        },
+    );
 }
