@@ -105,8 +105,7 @@ fn response(depth: f32, uv: vec2<f32>) -> f32{
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
 
-    // One @if per statement, not a block: a block would hide `shade`, which is
-    // read again below.
+    // One @if per statement, line for line with the #ifdef it replaced.
     @if(USE_EDL)
     let edl_depth = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0).g;
 
